@@ -1,0 +1,3 @@
+ebooklib
+beautifulsoup4
+tqdm
