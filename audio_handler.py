@@ -10,9 +10,7 @@ from tqdm import tqdm
 
 
 def convert_chunk_to_audio(args: Tuple[int, str, str, Optional[str]]) -> Optional[str]:
-    """
-    Worker function to convert a single text chunk to an audio file.
-    """
+    """Converts a single text chunk to an audio file using the 'say' command."""
     index, text_chunk, chapter_dir, voice = args
 
     output_filename = os.path.join(chapter_dir, f"Chapter_{index + 1:03d}.aiff")
@@ -35,9 +33,7 @@ def convert_chunk_to_audio(args: Tuple[int, str, str, Optional[str]]) -> Optiona
 
 
 def merge_audio_files(file_list: List[str], final_output: str) -> None:
-    """
-    Merges a list of audio files into a single file using ffmpeg.
-    """
+    """Merges a list of audio files into a single file using ffmpeg."""
     print("\nMerging audio chapters with ffmpeg...")
 
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".txt") as f:
@@ -89,14 +85,11 @@ def process_chapters(
     args: argparse.Namespace,
     final_output_path: str,
 ):
-    """
-    Handles the core logic of converting and merging chapters.
-    """
+    """Orchestrates the parallel conversion of text chunks to audio and merges them."""
     num_workers = args.jobs or max(1, os.cpu_count() - 1)
     pool_args = [
         (i, chunk, chapter_dir, args.voice) for i, chunk in enumerate(text_chunks)
     ]
-    # Explicitly free up memory from the large text_chunks list
     del text_chunks
 
     results = []
@@ -110,7 +103,6 @@ def process_chapters(
             if result:
                 results.append(result)
 
-        # Ensure all processes are finished and resources are released
         pool.close()
         pool.join()
 
@@ -120,7 +112,6 @@ def process_chapters(
     results.sort()
 
     if args.format == "mp3":
-        # Use a temporary file for the intermediate AIFF merge
         with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as temp_aiff:
             temp_aiff_path = temp_aiff.name
 
@@ -128,8 +119,6 @@ def process_chapters(
             merge_audio_files(results, temp_aiff_path)
             convert_aiff_to_mp3(temp_aiff_path, final_output_path)
         finally:
-            # Guaranteed cleanup of the intermediate file
             os.remove(temp_aiff_path)
     else:
-        # The final output is AIFF
         merge_audio_files(results, final_output_path)

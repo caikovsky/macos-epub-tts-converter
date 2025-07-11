@@ -8,7 +8,6 @@ from epub_handler import epub_to_chunks
 
 
 def main() -> None:
-    """Main function to parse arguments and orchestrate the conversion."""
     parser = argparse.ArgumentParser(
         description="Convert an EPUB file to an audio file using parallel processing.",
         formatter_class=argparse.RawTextHelpFormatter,
