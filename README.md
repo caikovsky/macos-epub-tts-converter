@@ -64,7 +64,7 @@ output/
 ### Command
 
 ```bash
-python3 tts.py --input /path/to/your/book.epub --output MyBook.mp3 --format mp3
+python3 main.py --input /path/to/your/book.epub --output MyBook.mp3 --format mp3
 ```
 
 ### Arguments
@@ -80,12 +80,12 @@ python3 tts.py --input /path/to/your/book.epub --output MyBook.mp3 --format mp3
 
 ```bash
 # Convert a book to MP3 using the default settings.
-python3 tts.py -i "MyBook.epub" -o "MyBook.mp3" --format mp3
+python3 main.py -i "MyBook.epub" -o "MyBook.mp3" --format mp3
 ```
 
 ```bash
 # Convert a book using the premium "Zoe (enhanced)" voice, 7 cores, and keep the chapter files.
-python3 tts.py \
+python3 main.py \
     -i "O_Cortiço.epub" \
     -o "O_Cortiço.mp3" \
     -v "Zoe (enhanced)" \
@@ -93,5 +93,6 @@ python3 tts.py \
     --format mp3 \
     --keep-chapters
 ```
+
 
 
