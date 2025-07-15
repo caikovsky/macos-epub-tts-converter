@@ -16,6 +16,7 @@ from validation import (
     create_safe_output_directory,
 )
 from logging_config import main_logger, log_system_info, log_exception
+from config import config, ConfigError
 
 
 def main() -> None:
@@ -23,43 +24,122 @@ def main() -> None:
     logger = main_logger
     log_system_info(logger)
     
+    # Load configuration and validate
+    try:
+        config.validate_config()
+    except ConfigError as e:
+        logger.error(f"Configuration error: {e}")
+        sys.exit(1)
+    
+    # Get defaults from configuration
+    config_defaults = config.get_defaults_for_cli()
+    
     parser = argparse.ArgumentParser(
         description="Convert an EPUB file to an audio file using parallel processing.",
         formatter_class=argparse.RawTextHelpFormatter,
     )
     parser.add_argument(
-        "-i", "--input", required=True, help="Path to the input EPUB file."
+        "-i", "--input", help="Path to the input EPUB file."
     )
     parser.add_argument(
         "-o",
         "--output",
-        required=True,
         help="Base filename for the output audio file (e.g., 'MyBook.mp3').",
     )
     parser.add_argument(
-        "-v", "--voice", help="The voice for speech synthesis (e.g., 'Samantha')."
+        "-v", "--voice", 
+        default=config_defaults.get('voice'),
+        help="The voice for speech synthesis (e.g., 'Samantha'). Default from config."
     )
     parser.add_argument(
         "-j",
         "--jobs",
         type=int,
-        help="Number of parallel jobs. Defaults to (CPU cores - 1).",
+        default=config_defaults.get('jobs'),
+        help="Number of parallel jobs. Defaults to config setting or (CPU cores - 1).",
     )
     parser.add_argument(
         "-f",
         "--format",
         choices=["aiff", "mp3"],
-        default="aiff",
-        help="The output audio format. 'mp3' requires ffmpeg. (default: aiff)",
+        default=config_defaults.get('format', 'aiff'),
+        help=f"The output audio format. 'mp3' requires ffmpeg. (default: {config_defaults.get('format', 'aiff')})",
+    )
+    
+    # Update the keep_chapters argument to use config default
+    keep_chapters_default = config_defaults.get('keep_chapters', False)
+    if keep_chapters_default:
+        parser.add_argument(
+            "--keep-chapters",
+            action="store_true",
+            default=True,
+            help="Save individual chapter audio files in a dedicated folder. (default: enabled in config)",
+        )
+        parser.add_argument(
+            "--no-keep-chapters",
+            action="store_false",
+            dest="keep_chapters",
+            help="Don't save individual chapter files (override config default).",
+        )
+    else:
+        parser.add_argument(
+            "--keep-chapters",
+            action="store_true",
+            help="If specified, saves the individual chapter audio files in a dedicated folder.",
+        )
+
+    # Add configuration-related arguments
+    parser.add_argument(
+        "--create-config",
+        action="store_true",
+        help="Create a default config.ini file and exit.",
     )
     parser.add_argument(
-        "--keep-chapters",
-        action="store_true",
-        help="If specified, saves the individual chapter audio files in a dedicated folder.",
+        "--config-file",
+        help="Path to configuration file (default: config.ini).",
     )
 
     args = parser.parse_args()
     
+    # Handle configuration file creation
+    if args.create_config:
+        try:
+            config.create_default_config_file(force=True)
+            logger.info(f"Configuration file created: {config.config_file}")
+            print(f"Configuration file created: {config.config_file}")
+            print("Edit this file to customize your default settings.")
+            sys.exit(0)
+        except ConfigError as e:
+            logger.error(f"Failed to create config file: {e}")
+            print(f"Failed to create config file: {e}", file=sys.stderr)
+            sys.exit(1)
+    
+    # Validate required arguments for normal operation
+    if not args.input:
+        logger.error("Input EPUB file is required")
+        print("Error: Input EPUB file is required (use -i/--input)", file=sys.stderr)
+        sys.exit(1)
+    if not args.output:
+        logger.error("Output filename is required")
+        print("Error: Output filename is required (use -o/--output)", file=sys.stderr)
+        sys.exit(1)
+    
+    # If custom config file specified, reload configuration
+    if args.config_file:
+        try:
+            from config import TtsConfig
+            # Create a new config instance with the specified file
+            custom_config = TtsConfig(args.config_file)
+            custom_config.validate_config()
+            # Update the global config reference
+            import config as config_module
+            config_module.config = custom_config
+            logger.info(f"Using custom configuration file: {args.config_file}")
+        except ConfigError as e:
+            logger.error(f"Configuration error: {e}")
+            print(f"Configuration error: {e}", file=sys.stderr)
+            sys.exit(1)
+
     logger.info(f"Starting TTS conversion process")
     logger.info(f"Input file: {args.input}")
     logger.info(f"Output file: {args.output}")
@@ -112,9 +192,10 @@ def main() -> None:
     # Use validated output path
     args.output = output_path_or_error
 
-    # --- Secure Output Directory Logic ---
+    # --- Configuration-based Output Directory Logic ---
     logger.info("Creating output directory structure...")
     output_base_name = os.path.splitext(os.path.basename(args.output))[0]
+    output_dir = config.get_output_directory()
     try:
         book_output_dir = create_safe_output_directory(output_base_name)
         final_output_path = os.path.join(book_output_dir, os.path.basename(args.output))
@@ -123,7 +204,7 @@ def main() -> None:
     except ValidationError as e:
         logger.error(f"Failed to create output directory: {e}")
         sys.exit(1)
-    # --- End Secure Logic ---
+    # --- End Configuration Logic ---
 
     logger.info("Parsing EPUB file...")
     try:
@@ -140,18 +221,20 @@ def main() -> None:
     logger.info(f"Book '{title}' split into {num_chunks} chapters/chunks")
 
     if args.keep_chapters:
-        chapter_dir = os.path.join(book_output_dir, f"{output_base_name}_chapters")
+        chapter_suffix = config.get_chapter_suffix()
+        chapter_dir = os.path.join(book_output_dir, f"{output_base_name}{chapter_suffix}")
         os.makedirs(chapter_dir, exist_ok=True)
 
-        # --- Pre-run Cleanup Logic ---
-        logger.info(f"Cleaning up old chapter files in {chapter_dir}...")
-        cleanup_count = 0
-        for old_file in os.listdir(chapter_dir):
-            if old_file.endswith(".aiff"):
-                os.remove(os.path.join(chapter_dir, old_file))
-                cleanup_count += 1
-        if cleanup_count > 0:
-            logger.info(f"Removed {cleanup_count} old chapter files")
+        # --- Pre-run Cleanup Logic (if enabled in config) ---
+        if config.should_cleanup_old_files():
+            logger.info(f"Cleaning up old chapter files in {chapter_dir}...")
+            cleanup_count = 0
+            for old_file in os.listdir(chapter_dir):
+                if old_file.endswith(".aiff"):
+                    os.remove(os.path.join(chapter_dir, old_file))
+                    cleanup_count += 1
+            if cleanup_count > 0:
+                logger.info(f"Cleaned up {cleanup_count} old chapter files")
         # --- End Cleanup Logic ---
 
         logger.info(f"Chapter files will be saved in: {chapter_dir}")
