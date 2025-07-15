@@ -120,6 +120,7 @@ output/
 text_exports/
 *.aiff
 *.mp3
+*.epub
 
 # Logs
 logs/
