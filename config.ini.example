@@ -1,0 +1,78 @@
+# TTS Application Configuration
+# This file contains default settings for the TTS application.
+# Command line arguments will override these settings.
+#
+# To use this configuration:
+# 1. Copy this file to 'config.ini' in the same directory as main.py
+# 2. Uncomment and modify the settings you want to change
+# 3. Run the application normally - your settings will be used automatically
+
+[defaults]
+# Default voice for text-to-speech (leave empty for system default)
+# Run 'say -v ?' to see available voices on your system
+# Examples: Samantha, Alex, Victoria, Zoe
+voice = 
+
+# Default output format (aiff or mp3)
+format = aiff
+
+# Keep individual chapter files by default
+keep_chapters = false
+
+# Number of parallel jobs (auto = CPU cores - 1, or specify a number)
+# Examples: auto, 4, 8
+jobs = auto
+
+[directories]
+# Base directory for output files
+output_dir = output
+
+# Suffix for chapter directories
+chapter_suffix = _chapters
+
+[audio]
+# MP3 quality (0 = highest, 9 = lowest)
+# Only applies when format = mp3
+mp3_quality = 0
+
+# Clean up old chapter files before processing
+cleanup_old_files = true
+
+# Timeout for individual chunk conversion (seconds)
+# Increase if you have very long chapters
+conversion_timeout = 300
+
+# Timeout for audio merging (seconds)
+# Increase if you have many chapters
+merge_timeout = 600
+
+[processing]
+# Maximum number of retries for failed conversions
+max_retries = 3
+
+# Delay between retries (seconds)
+retry_delay = 1
+
+# Skip title page during processing
+skip_titlepage = true
+
+# Skip navigation files during processing
+skip_navigation = true
+
+# Failure threshold (0.5 = 50% of chapters can fail before aborting)
+# Set to 1.0 to never abort, 0.0 to abort on first failure
+failure_threshold = 0.5
+
+[logging]
+# Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+# DEBUG: Very verbose, INFO: Normal, WARNING: Important issues only
+log_level = INFO
+
+# Enable colored console output
+enable_colors = true
+
+# Maximum log file size in bytes (10MB)
+max_log_size = 10485760
+
+# Number of log file backups to keep
+log_backups = 5 

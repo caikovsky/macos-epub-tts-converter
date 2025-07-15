@@ -8,6 +8,7 @@ from typing import List, Optional, Tuple
 
 from tqdm import tqdm
 from secure_subprocess import secure_runner, SubprocessError
+from config import config
 
 
 def convert_chunk_to_audio(args: Tuple[int, str, str, Optional[str]]) -> Optional[str]:
@@ -44,132 +45,127 @@ def convert_chunk_to_audio(args: Tuple[int, str, str, Optional[str]]) -> Optiona
                     return None
             else:
                 error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-                print(
-                    f"\nWarning: Failed to convert chunk {index + 1} (attempt {attempt + 1}/{max_retries}). Error: {error_msg}",
-                    file=sys.stderr,
-                )
+                print(f"\nError processing chunk {index + 1}: {error_msg}", file=sys.stderr)
                 
-                # If this is the last attempt, give up
-                if attempt == max_retries - 1:
+                if attempt < max_retries - 1:
+                    print(f"Retrying chunk {index + 1} (attempt {attempt + 2}/{max_retries})", file=sys.stderr)
+                    continue
+                else:
+                    print(f"Failed to process chunk {index + 1} after {max_retries} attempts", file=sys.stderr)
                     return None
-                
-                # Wait a bit before retrying
-                import time
-                time.sleep(1)
-                
+                    
         except SubprocessError as e:
-            print(
-                f"\nWarning: Failed to convert chunk {index + 1} (attempt {attempt + 1}/{max_retries}). Security/subprocess error: {e}",
-                file=sys.stderr,
-            )
+            error_msg = str(e)
+            print(f"\nError processing chunk {index + 1}: {error_msg}", file=sys.stderr)
             
-            # If this is the last attempt, give up
-            if attempt == max_retries - 1:
+            if attempt < max_retries - 1:
+                print(f"Retrying chunk {index + 1} (attempt {attempt + 2}/{max_retries})", file=sys.stderr)
+                continue
+            else:
+                print(f"Failed to process chunk {index + 1} after {max_retries} attempts", file=sys.stderr)
                 return None
-            
-            # Wait a bit before retrying
-            import time
-            time.sleep(1)
-        
-        except Exception as e:
-            print(
-                f"\nWarning: Unexpected error converting chunk {index + 1} (attempt {attempt + 1}/{max_retries}): {e}",
-                file=sys.stderr,
-            )
-            
-            # If this is the last attempt, give up
-            if attempt == max_retries - 1:
-                return None
-            
-            # Wait a bit before retrying
-            import time
-            time.sleep(1)
-    
+
     return None
 
 
-def merge_audio_files(file_list: List[str], final_output: str) -> None:
-    """Merges a list of audio files into a single file using ffmpeg."""
-    print("\nMerging audio chapters with ffmpeg...")
+def secure_file_cleanup(file_path: str) -> None:
+    """Securely clean up a temporary file."""
+    try:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+    except OSError as e:
+        print(f"Warning: Could not clean up temporary file {file_path}: {e}", file=sys.stderr)
 
-    # Validate input files
-    if not file_list:
-        raise ValueError("No audio files provided for merging")
-    
-    # Check that all input files exist and are not empty
-    valid_files = []
-    for filename in file_list:
-        if not os.path.exists(filename):
-            print(f"Warning: Audio file not found: {filename}", file=sys.stderr)
-            continue
-        
-        if os.path.getsize(filename) == 0:
-            print(f"Warning: Audio file is empty: {filename}", file=sys.stderr)
-            continue
-        
-        valid_files.append(filename)
-    
-    if not valid_files:
-        raise ValueError("No valid audio files found for merging")
-    
-    if len(valid_files) != len(file_list):
-        print(f"Warning: Using {len(valid_files)} out of {len(file_list)} audio files", file=sys.stderr)
 
-    # Create file list content
-    file_list_content = ""
-    for filename in valid_files:
-        file_list_content += f"file '{os.path.abspath(filename)}'\n"
+def process_chapters(text_chunks: List[str], chapter_dir: str, args: argparse.Namespace, final_output_path: str) -> None:
+    """Process text chunks into audio files and merge them."""
     
-    # Create secure temporary file
-    from secure_subprocess import create_secure_temp_file, secure_file_cleanup
+    # Prepare arguments for parallel processing
+    chunk_args = [(i, chunk, chapter_dir, args.voice) for i, chunk in enumerate(text_chunks)]
     
+    # Use multiprocessing with progress bar
+    with Pool(processes=args.jobs) as pool:
+        results = list(tqdm(
+            pool.imap(convert_chunk_to_audio, chunk_args),
+            total=len(text_chunks),
+            desc="Converting text to audio",
+            unit="chapter"
+        ))
+    
+    # Filter out None results and sort by chapter number
+    audio_files = [f for f in results if f is not None]
+    audio_files.sort(key=lambda x: int(x.split('_')[-1].split('.')[0]))
+    
+    if not audio_files:
+        raise RuntimeError("No audio files were successfully created")
+    
+    # Check if we have a reasonable number of successful conversions
+    success_rate = len(audio_files) / len(text_chunks)
+    if success_rate < 0.5:  # Less than 50% success rate
+        raise RuntimeError(f"Too many failed conversions ({success_rate:.1%} success rate)")
+    
+    print(f"Successfully converted {len(audio_files)} out of {len(text_chunks)} chapters")
+    
+    # Merge audio files
+    merge_audio_files(audio_files, final_output_path)
+    
+    # Convert to MP3 if requested
+    if args.format == "mp3":
+        aiff_path = final_output_path
+        mp3_path = os.path.splitext(final_output_path)[0] + ".mp3"
+        convert_aiff_to_mp3(aiff_path, mp3_path)
+        
+        # Clean up the temporary AIFF file
+        secure_file_cleanup(aiff_path)
+
+
+def merge_audio_files(audio_files: List[str], output_path: str) -> None:
+    """Merge multiple audio files into a single file using ffmpeg."""
+    if not audio_files:
+        raise RuntimeError("No audio files to merge")
+    
+    # Create a temporary file list for ffmpeg
     temp_list_path = None
     try:
-        temp_list_path = create_secure_temp_file(file_list_content, suffix=".txt")
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
+            temp_list_path = temp_file.name
+            for audio_file in audio_files:
+                # Escape single quotes in filenames for ffmpeg
+                escaped_path = audio_file.replace("'", "'\"'\"'")
+                temp_file.write(f"file '{escaped_path}'\n")
         
-        command_args = [
-            "-f", "concat",
-            "-safe", "0",
-            "-i", temp_list_path,
-            "-c", "copy",
-            final_output,
-            "-y",
-        ]
-
+        print(f"Merging {len(audio_files)} audio files into '{os.path.basename(output_path)}'...")
+        
+        # Use ffmpeg to concatenate the files
+        command_args = ["-f", "concat", "-safe", "0", "-i", temp_list_path, "-c", "copy", output_path, "-y"]
+        
         result = secure_runner.run_command(
             "ffmpeg",
             command_args,
-            timeout=600  # 10 minute timeout for merging
+            timeout=1800  # 30 minute timeout for merging
         )
         
         if result.returncode != 0:
-            error_msg = result.stderr.strip() if result.stderr else "Unknown error"
-            raise RuntimeError(f"ffmpeg merge failed: {error_msg}")
+            raise RuntimeError(f"Error during audio merging:\n{result.stderr}")
         
-        # Verify the output file was created
-        if not os.path.exists(final_output):
-            raise RuntimeError(f"Output file was not created: {final_output}")
-        
-        if os.path.getsize(final_output) == 0:
-            raise RuntimeError(f"Output file is empty: {final_output}")
-            
-        print(f"Successfully created merged audio file: {final_output}")
+        print(f"Successfully created merged audio file: {output_path}")
         
     except SubprocessError as e:
-        if "not found" in str(e):
-            raise RuntimeError("'ffmpeg' command not found. Please install ffmpeg and ensure it's in your PATH.")
-        else:
-            raise RuntimeError(f"ffmpeg subprocess error: {e}")
+        raise RuntimeError(f"Error during audio merging: {e}")
+    
     finally:
         if temp_list_path:
             secure_file_cleanup(temp_list_path)
 
 
 def convert_aiff_to_mp3(aiff_path: str, mp3_path: str) -> None:
-    """Converts an AIFF file to a high-quality MP3 using ffmpeg."""
+    """Converts an AIFF file to MP3 using ffmpeg with configured quality."""
     print(f"Converting '{os.path.basename(aiff_path)}' to MP3 format...")
     
-    command_args = ["-i", aiff_path, "-q:a", "0", mp3_path, "-y"]
+    # Get MP3 quality from configuration
+    mp3_quality = config.get_mp3_quality()
+    
+    command_args = ["-i", aiff_path, "-q:a", str(mp3_quality), mp3_path, "-y"]
     
     try:
         result = secure_runner.run_command(
@@ -181,73 +177,13 @@ def convert_aiff_to_mp3(aiff_path: str, mp3_path: str) -> None:
         if result.returncode != 0:
             sys.exit(f"Error during MP3 conversion:\n{result.stderr}")
             
-        print(f"Successfully created MP3 file: {mp3_path}")
+        print(f"Successfully created MP3 file: {mp3_path} (quality: {mp3_quality})")
         
     except SubprocessError as e:
         sys.exit(f"Error during MP3 conversion: {e}")
 
 
-def process_chapters(
-    text_chunks: List[str],
-    chapter_dir: str,
-    args: argparse.Namespace,
-    final_output_path: str,
-) -> None:
-    """Orchestrates the parallel conversion of text chunks to audio and merges them."""
-    num_workers = args.jobs or max(1, (os.cpu_count() or 2) - 1)
-    pool_args = [
-        (i, chunk, chapter_dir, args.voice) for i, chunk in enumerate(text_chunks)
-    ]
-    del text_chunks
-
-    results = []
-    failed_chunks = []
-    
-    with Pool(processes=num_workers) as pool:
-        pbar = tqdm(
-            pool.imap_unordered(convert_chunk_to_audio, pool_args),
-            total=len(pool_args),
-            desc="Converting Chapters",
-        )
-        for i, result in enumerate(pbar):
-            if result:
-                results.append(result)
-            else:
-                failed_chunks.append(i + 1)
-
-        pool.close()
-        pool.join()
-
-    # Report conversion results
-    total_chunks = len(pool_args)
-    successful_chunks = len(results)
-    failed_count = len(failed_chunks)
-    
-    if failed_count > 0:
-        print(f"\nWarning: {failed_count} out of {total_chunks} chapters failed to convert", file=sys.stderr)
-        if failed_count <= 5:  # Show specific chapter numbers if not too many
-            print(f"Failed chapters: {', '.join(map(str, failed_chunks))}", file=sys.stderr)
-    
-    print(f"\nSuccessfully converted {successful_chunks} out of {total_chunks} chapters")
-
-    if not results:
-        raise RuntimeError("All audio chapter conversions failed. Check the error messages above.")
-    
-    if failed_count > total_chunks * 0.5:  # More than 50% failed
-        raise RuntimeError(f"Too many chapters failed ({failed_count}/{total_chunks}). Aborting.")
-
-    results.sort()
-
-    if args.format == "mp3":
-        from secure_subprocess import secure_file_cleanup
-        
-        with tempfile.NamedTemporaryFile(suffix=".aiff", delete=False) as temp_aiff:
-            temp_aiff_path = temp_aiff.name
-
-        try:
-            merge_audio_files(results, temp_aiff_path)
-            convert_aiff_to_mp3(temp_aiff_path, final_output_path)
-        finally:
-            secure_file_cleanup(temp_aiff_path)
-    else:
-        merge_audio_files(results, final_output_path)
+def get_default_jobs() -> int:
+    """Get the default number of parallel jobs."""
+    cpu_count = os.cpu_count()
+    return max(1, cpu_count - 1) if cpu_count else 1
