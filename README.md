@@ -147,7 +147,7 @@ python3 main.py -i "MyBook.epub" -o "MyBook.mp3" --format mp3
 python3 main.py \
     -i "O_Cortiço.epub" \
     -o "O_Cortiço.mp3" \
-    -v "Zoe (enhanced)" \
+    -v "Zoe (Enhanced)" \
     -j 7 \
     --format mp3 \
     --keep-chapters

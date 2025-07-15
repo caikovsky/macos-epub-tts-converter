@@ -10,7 +10,7 @@
 [defaults]
 # Default voice for text-to-speech (leave empty for system default)
 # Run 'say -v ?' to see available voices on your system
-# Examples: Samantha, Alex, Victoria, Zoe
+# Examples: Samantha, Alex, Victoria, Zoe, Zoe (Enhanced), Ava (Premium), Zoe (Multilingual)
 voice = 
 
 # Default output format (aiff or mp3)

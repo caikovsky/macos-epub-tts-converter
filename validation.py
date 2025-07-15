@@ -175,8 +175,8 @@ def validate_voice(voice: Optional[str]) -> Tuple[bool, str]:
     if voice is None:
         return True, "No voice specified (will use system default)"
     
-    # Check for obvious injection attempts
-    dangerous_chars = [';', '&', '|', '`', '$', '(', ')', '<', '>', '"', "'"]
+    # Check for obvious injection attempts (allow parentheses and spaces for enhanced voices)
+    dangerous_chars = [';', '&', '|', '`', '$', '<', '>', '"', "'"]
     for char in dangerous_chars:
         if char in voice:
             return False, f"Invalid character in voice name: {char}"
@@ -188,6 +188,10 @@ def validate_voice(voice: Optional[str]) -> Tuple[bool, str]:
     # Check for directory traversal
     if '..' in voice or '/' in voice or '\\' in voice:
         return False, "Invalid voice name format"
+    
+    # Additional check for balanced parentheses (for enhanced voices)
+    if voice.count('(') != voice.count(')'):
+        return False, "Unbalanced parentheses in voice name"
     
     return True, "Voice name is valid"
 
