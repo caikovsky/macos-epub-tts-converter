@@ -53,11 +53,15 @@ class SecureSubprocessRunner:
         # Remove null bytes
         arg = arg.replace('\x00', '')
         
-        # Check for dangerous characters
-        dangerous_chars = [';', '&', '|', '`', '$', '(', ')', '<', '>', '\n', '\r']
+        # Check for dangerous characters (allow parentheses for enhanced voices)
+        dangerous_chars = [';', '&', '|', '`', '$', '<', '>', '\n', '\r']
         for char in dangerous_chars:
             if char in arg:
                 raise SubprocessError(f"Dangerous character '{char}' found in argument: {arg}")
+        
+        # Check for balanced parentheses (for enhanced voices like "Zoe (Enhanced)")
+        if arg.count('(') != arg.count(')'):
+            raise SubprocessError(f"Unbalanced parentheses in argument: {arg}")
         
         # Limit argument length
         if len(arg) > 1000:
