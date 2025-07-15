@@ -142,8 +142,9 @@ def merge_audio_files(audio_files: List[str], output_path: str) -> None:
         with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as temp_file:
             temp_list_path = temp_file.name
             for audio_file in audio_files:
-                # Escape single quotes in filenames for ffmpeg
-                escaped_path = audio_file.replace("'", "'\"'\"'")
+                # Convert to absolute path and escape single quotes for ffmpeg
+                abs_path = os.path.abspath(audio_file)
+                escaped_path = abs_path.replace("'", "'\"'\"'")
                 temp_file.write(f"file '{escaped_path}'\n")
         
         print(f"Created temp file list: {temp_list_path}")
