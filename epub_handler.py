@@ -1,5 +1,5 @@
 import sys
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 
 import ebooklib
 from bs4 import BeautifulSoup
@@ -13,7 +13,7 @@ def get_book_title(book: epub.EpubBook) -> str:
     return "Untitled"
 
 
-def clean_html_chapter(soup: BeautifulSoup):
+def clean_html_chapter(soup: BeautifulSoup) -> None:
     """Removes common non-narrative HTML elements from a chapter."""
     for tag in soup.find_all("nav"):
         tag.decompose()

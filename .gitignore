@@ -50,6 +50,7 @@ dmypy.json
 
 # Custom Output
 output/
+logs/
 *.epub
 *.aiff
 *.mp3
