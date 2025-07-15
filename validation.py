@@ -267,12 +267,13 @@ def check_system_dependencies() -> Tuple[bool, str]:
     return True, "All system dependencies are available"
 
 
-def create_safe_output_directory(base_name: str) -> str:
+def create_safe_output_directory(base_name: str, base_output_dir: str = "output") -> str:
     """
     Creates a safe output directory with proper permissions.
     
     Args:
         base_name: Base name for the output directory
+        base_output_dir: Base output directory (default: "output")
         
     Returns:
         Path to the created directory
@@ -280,8 +281,8 @@ def create_safe_output_directory(base_name: str) -> str:
     # Sanitize the base name
     safe_name = sanitize_filename(base_name)
     
-    # Create output directory structure
-    output_dir = os.path.join("output", safe_name)
+    # Create output directory structure using configured base directory
+    output_dir = os.path.join(base_output_dir, safe_name)
     
     try:
         os.makedirs(output_dir, mode=0o755, exist_ok=True)

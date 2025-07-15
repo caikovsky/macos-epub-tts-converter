@@ -124,6 +124,18 @@ def merge_audio_files(audio_files: List[str], output_path: str) -> None:
     if not audio_files:
         raise RuntimeError("No audio files to merge")
     
+    # Verify all input files exist before proceeding
+    missing_files = []
+    for audio_file in audio_files:
+        if not os.path.exists(audio_file):
+            missing_files.append(audio_file)
+    
+    if missing_files:
+        raise RuntimeError(f"Missing audio files: {missing_files}")
+    
+    print(f"Merging {len(audio_files)} audio files into '{os.path.basename(output_path)}'...")
+    print(f"Input files: {audio_files[:3]}{'...' if len(audio_files) > 3 else ''}")
+    
     # Create a temporary file list for ffmpeg
     temp_list_path = None
     try:
@@ -134,7 +146,7 @@ def merge_audio_files(audio_files: List[str], output_path: str) -> None:
                 escaped_path = audio_file.replace("'", "'\"'\"'")
                 temp_file.write(f"file '{escaped_path}'\n")
         
-        print(f"Merging {len(audio_files)} audio files into '{os.path.basename(output_path)}'...")
+        print(f"Created temp file list: {temp_list_path}")
         
         # Use ffmpeg to concatenate the files
         command_args = ["-f", "concat", "-safe", "0", "-i", temp_list_path, "-c", "copy", output_path, "-y"]
@@ -146,6 +158,13 @@ def merge_audio_files(audio_files: List[str], output_path: str) -> None:
         )
         
         if result.returncode != 0:
+            # Read the temp file to show what ffmpeg was trying to process
+            try:
+                with open(temp_list_path, 'r') as f:
+                    file_list_content = f.read()
+                print(f"File list content:\n{file_list_content}", file=sys.stderr)
+            except:
+                pass
             raise RuntimeError(f"Error during audio merging:\n{result.stderr}")
         
         print(f"Successfully created merged audio file: {output_path}")

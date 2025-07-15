@@ -197,7 +197,7 @@ def main() -> None:
     output_base_name = os.path.splitext(os.path.basename(args.output))[0]
     output_dir = config.get_output_directory()
     try:
-        book_output_dir = create_safe_output_directory(output_base_name)
+        book_output_dir = create_safe_output_directory(output_base_name, output_dir)
         final_output_path = os.path.join(book_output_dir, os.path.basename(args.output))
         logger.info(f"Output directory created: {book_output_dir}")
         logger.info(f"Final output path: {final_output_path}")
