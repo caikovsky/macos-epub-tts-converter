@@ -127,3 +127,11 @@ logs/
 
 # Local configuration
 config.ini
+# Test artifacts
+htmlcov/
+.coverage
+coverage.xml
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo

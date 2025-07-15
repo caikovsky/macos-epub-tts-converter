@@ -106,17 +106,20 @@ def process_chapters(text_chunks: List[str], chapter_dir: str, args: argparse.Na
     
     print(f"Successfully converted {len(audio_files)} out of {len(text_chunks)} chapters")
     
-    # Merge audio files
-    merge_audio_files(audio_files, final_output_path)
-    
-    # Convert to MP3 if requested
+    # Merge audio files - always merge to AIFF first since input files are AIFF
     if args.format == "mp3":
-        aiff_path = final_output_path
-        mp3_path = os.path.splitext(final_output_path)[0] + ".mp3"
-        convert_aiff_to_mp3(aiff_path, mp3_path)
+        # For MP3 output, create temporary AIFF file first
+        aiff_path = os.path.splitext(final_output_path)[0] + ".aiff"
+        merge_audio_files(audio_files, aiff_path)
+        
+        # Convert to MP3
+        convert_aiff_to_mp3(aiff_path, final_output_path)
         
         # Clean up the temporary AIFF file
         secure_file_cleanup(aiff_path)
+    else:
+        # For AIFF output, merge directly to final path
+        merge_audio_files(audio_files, final_output_path)
 
 
 def merge_audio_files(audio_files: List[str], output_path: str) -> None:
