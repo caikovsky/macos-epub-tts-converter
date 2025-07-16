@@ -47,8 +47,8 @@ This tool is optimized for speed, security, and reliability:
 
 3.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-username/your-repo-name.git
-    cd your-repo-name
+    git clone https://github.com/caikovsky/macos-epub-tts-converter.git
+    cd macos-epub-tts-converter
     ```
 
 4.  **Create and activate a virtual environment:**
